@@ -5,9 +5,22 @@ import Login from './Login';
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPublicAccess, setIsPublicAccess] = useState(false);
   
   // Check authentication status on load
   useEffect(() => {
+    // First check if this is a public page access
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPublic = urlParams.get('public') === 'true' || window.PUBLIC_ACCESS;
+    setIsPublicAccess(isPublic);
+    
+    // If it's a public page access, skip authentication check
+    if (isPublic) {
+      setIsLoading(false);
+      return;
+    }
+    
+    // Otherwise check authentication status
     const checkAuthStatus = async () => {
       try {
         const response = await fetch('/api/auth-status');
@@ -46,27 +59,23 @@ export default function App() {
     );
   }
   
-  return (
-    <>
-      {isAuthenticated ? (
-        <PageCreatorWithLogout onLogout={handleLogout} />
-      ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
-      )}
-    </>
-  );
-}
-
-// Wrapper component to add logout functionality to PageCreator
-function PageCreatorWithLogout({ onLogout }) {
-  return (
-    <div className="app-container">
-      <div className="logout-button">
-        <button onClick={onLogout} className="btn btn-sm btn-outline">
-          Logout
-        </button>
+  // If this is a public page access or the user is authenticated, show the PageCreator
+  if (isPublicAccess || isAuthenticated) {
+    return (
+      <div className="app-container">
+        {/* Only show logout button if authenticated (not in public mode) */}
+        {isAuthenticated && (
+          <div className="logout-button">
+            <button onClick={handleLogout} className="btn btn-sm btn-outline">
+              Logout
+            </button>
+          </div>
+        )}
+        <PageCreator isPublicMode={isPublicAccess} />
       </div>
-      <PageCreator />
-    </div>
-  );
+    );
+  }
+  
+  // Otherwise show login
+  return <Login onLoginSuccess={handleLoginSuccess} />;
 }

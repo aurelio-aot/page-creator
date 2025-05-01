@@ -84,6 +84,12 @@ app.post('/api/logout', (req, res) => {
 
 // Authentication middleware for protected routes
 const requireAuth = (req, res, next) => {
+
+  const publicToken = req.query.public;
+  if (publicToken === 'true') {
+    return next(); // Allow access with the token
+  }
+
   if (!req.session.user) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -104,45 +110,63 @@ app.get('/page/:slug', (req, res) => {
     return res.redirect('/'); // Redirect to homepage if page not found
   }
   
-  // Create absolute URLs for image and page
+  // Create absolute URLs for image and page, ensuring the public parameter is included
   const imageUrl = page.cardImage ? 
     `${req.protocol}://${req.get('host')}${page.cardImage}` : '';
-  const pageUrl = `${req.protocol}://${req.get('host')}${page.url}`;
+  const pageUrl = `${req.protocol}://${req.get('host')}${page.url}?public=true`;
   
   // Render HTML with improved meta tags
   res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${page.title}</title>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${page.title}</title>
+      
+      <!-- Twitter Card Meta Tags -->
+      <meta name="twitter:card" content="${page.cardType}" />
+      <meta property="og:url" content="${pageUrl}" />
+      <meta name="twitter:title" content="${page.cardTitle || page.title}" />
+      <meta name="twitter:description" content="${page.cardDescription || page.summary}" />
+      ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}
+      
+      <!-- Open Graph Meta Tags -->
+      <meta property="og:title" content="${page.cardTitle || page.title}" />
+      <meta property="og:description" content="${page.cardDescription || page.summary}" />
+      <meta property="og:type" content="website" />
+      ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />` : ''}
+      
+      <link rel="stylesheet" href="/styles.css">
+    </head>
+    <body>
+      <div id="root"></div>
+      <script>
+        // Inject the current page data for React
+        window.CURRENT_PAGE = ${JSON.stringify(page)};
+        
+        // Add the public flag for client-side use
+        window.PUBLIC_ACCESS = ${req.query.public === 'true'};
+      </script>
+      <script src="/bundle.js"></script>
+    </body>
+    </html>
+      `);
+});
+
+// Add a public route to get a specific page by slug - no auth required
+app.get('/api/public/pages/:slug', (req, res) => {
+  const pages = JSON.parse(fs.readFileSync(pagesDbPath, 'utf8'));
+  const page = pages.find(p => {
+    const pathSlug = p.url.replace('/page/', '');
+    return pathSlug === req.params.slug;
+  });
   
-  <!-- Twitter Card Meta Tags -->
-  <meta name="twitter:card" content="${page.cardType}" />
-  <meta property="og:url" content="${pageUrl}" />
-  <meta name="twitter:title" content="${page.cardTitle || page.title}" />
-  <meta name="twitter:description" content="${page.cardDescription || page.summary}" />
-  ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}
+  if (!page) {
+    return res.status(404).json({ error: 'Page not found' });
+  }
   
-  <!-- Open Graph Meta Tags -->
-  <meta property="og:title" content="${page.cardTitle || page.title}" />
-  <meta property="og:description" content="${page.cardDescription || page.summary}" />
-  <meta property="og:type" content="website" />
-  ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />` : ''}
-  
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <div id="root"></div>
-  <script>
-    // Inject the current page data for React
-    window.CURRENT_PAGE = ${JSON.stringify(page)};
-  </script>
-  <script src="/bundle.js"></script>
-</body>
-</html>
-  `);
+  res.json(page);
 });
 
 // Routes that require authentication
@@ -245,8 +269,15 @@ app.delete('/api/pages/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-// Serve the React app for all other routes
+
+// Modify the root handler to check for public access
 app.get('*', (req, res) => {
+  // If this is a public page access, allow it
+  if (req.query.public === 'true' && req.path.startsWith('/page/')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  
+  // Otherwise serve the React app for all other routes
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

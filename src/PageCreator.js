@@ -4,13 +4,14 @@ import { Trash2, Plus, Eye, Save, X, Copy, Check, Link, Layout, FileText, AlertT
 // API base URL - change this to your server URL
 const API_BASE_URL = '';  // Empty string means same domain as the app
 
-export default function PageCreator() {
+export default function PageCreator({ isPublicMode = false }) {
   const [pages, setPages] = useState([]);
   const [currentPage, setCurrentPage] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [isPublicView, setIsPublicView] = useState(isPublicMode);
   const [formData, setFormData] = useState({
     title: '',
     summary: '',
@@ -24,14 +25,23 @@ export default function PageCreator() {
 
   // Load pages from the server and check for current page in URL
   useEffect(() => {
+    // Update public view state based on props or window.PUBLIC_ACCESS
+    setIsPublicView(isPublicMode || window.PUBLIC_ACCESS);
+    
     // First check if we have a current page from server-side rendering
     if (window.CURRENT_PAGE) {
       setCurrentPage(window.CURRENT_PAGE);
     }
     
-    // Fetch all pages
-    fetchPages();
-  }, []);
+    // If in public mode and on a page URL, fetch just that page
+    if ((isPublicMode || window.PUBLIC_ACCESS) && window.location.pathname.startsWith('/page/')) {
+      const pageSlug = window.location.pathname.replace('/page/', '');
+      fetchPublicPage(pageSlug);
+    } else {
+      // Otherwise fetch all pages as normal
+      fetchPages();
+    }
+  }, [isPublicMode]);
 
   const fetchPages = async () => {
     try {
@@ -66,6 +76,24 @@ export default function PageCreator() {
       }
     } catch (error) {
       console.error("Error fetching pages:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to fetch just one page for public viewing
+  const fetchPublicPage = async (slug) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_BASE_URL}/api/public/pages/${slug}`);
+      if (response.ok) {
+        const page = await response.json();
+        setCurrentPage(page);
+      } else {
+        console.error("Error fetching public page:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error fetching public page:", error);
     } finally {
       setIsLoading(false);
     }
@@ -258,7 +286,8 @@ export default function PageCreator() {
   
   // Improved copyPageUrl function with fallback mechanism
   const copyPageUrl = (url) => {
-    const fullUrl = window.location.origin + url;
+    // Add the public parameter to the URL
+    const fullUrl = window.location.origin + url + '?public=true';
     
     // Try using the Clipboard API first
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -323,6 +352,38 @@ export default function PageCreator() {
     }
   };
 
+  // Public view component for a page
+  const PublicPageView = ({ page }) => {
+    if (!page) return <div className="loading">Loading page...</div>;
+    
+    return (
+      <div className="public-page fade-in">
+        <div className="card mb-6">
+          <div className="card-body">
+            <h1 className="text-2xl font-semibold mb-4">{page.title}</h1>
+            <p className="mb-6">{page.summary}</p>
+            
+            {page.cardImage && (
+              <div className="page-image-container mb-6">
+                <img 
+                  src={page.cardImage} 
+                  alt={page.title}
+                  className="page-image" 
+                />
+              </div>
+            )}
+            
+            <div className="public-page-footer mt-6 p-4">
+              <div className="text-sm">
+                <p>Shared via X/Twitter Card</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Twitter card preview component
   const TwitterCardPreview = ({ type, title, description, image, host }) => {
     return (
@@ -357,6 +418,15 @@ export default function PageCreator() {
       </div>
     );
   };
+
+  // If this is a public view from Twitter, show only the page content
+  if (isPublicView) {
+    return (
+      <div className="public-view-container">
+        <PublicPageView page={currentPage} />
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -420,7 +490,7 @@ export default function PageCreator() {
                       <div className="page-url">
                         <Link size={12} />
                         <div className="page-url-text">
-                          {window.location.origin}{page.url}
+                          {window.location.origin}{page.url}?public=true
                         </div>
                       </div>
                       <button
@@ -700,7 +770,7 @@ export default function PageCreator() {
 <pre>
 {`<!-- X Card Metadata (automatically included in the page head) -->
 <meta name="twitter:card" content="${currentPage.cardType}" />
-<meta property="og:url" content="${window.location.origin}${currentPage.url}" />
+<meta property="og:url" content="${window.location.origin}${currentPage.url}?public=true" />
 <meta name="twitter:title" content="${currentPage.cardTitle || currentPage.title}" />
 <meta name="twitter:description" content="${currentPage.cardDescription || currentPage.summary}" />${currentPage.cardImage ? `
 <meta name="twitter:image" content="${window.location.origin}${currentPage.cardImage}" />` : ''}`}
@@ -727,8 +797,9 @@ export default function PageCreator() {
                 <div className="mt-6 p-4 bg-primary-ultralight rounded-lg">
                   <div className="text-sm font-medium">
                     <p>✓ This page is now ready for sharing on X/Twitter!</p>
-                    <p className="mt-2">When you share this URL: <span className="font-semibold">{window.location.origin}{currentPage.url}</span></p>
+                    <p className="mt-2">When you share this URL: <span className="font-semibold">{window.location.origin}{currentPage.url}?public=true</span></p>
                     <p className="mt-2">X/Twitter will automatically generate a card with your title, description, and image (if added).</p>
+                    <p className="public-url-notice">Note: The ?public=true parameter allows anyone to view this page without login when clicked from Twitter.</p>
                   </div>
                 </div>
               </div>

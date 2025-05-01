@@ -1024,3 +1024,77 @@ body {
   color: var(--warning);
 }
 
+/* Public View Styles - Add these to the end of your index.css file */
+
+/* Container for public view */
+.public-view-container {
+  display: flex;
+  justify-content: center;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+/* Public page */
+.public-page {
+  width: 100%;
+}
+
+/* Container for page image */
+.page-image-container {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+/* Page image */
+.page-image {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+
+/* Loading indicator */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--gray-600);
+  font-size: 1rem;
+}
+
+/* Public page footer */
+.public-page-footer {
+  background-color: var(--primary-ultralight);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 2rem;
+  text-align: center;
+  color: var(--gray-700);
+}
+
+/* Public access tag */
+.public-access-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--success);
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  margin-left: 0.5rem;
+}
+
+/* Public URL notice */
+.public-url-notice {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--primary-ultralight);
+  border-radius: var(--border-radius);
+  font-size: 0.875rem;
+  color: var(--primary-dark);
+}
