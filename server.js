@@ -90,8 +90,9 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
-// Public routes (don't require authentication)
-// Serve page HTML with proper meta tags for social sharing
+// Update the meta tags section in server.js
+// Find the route handler for '/page/:slug' and update the HTML template
+
 app.get('/page/:slug', (req, res) => {
   const pages = JSON.parse(fs.readFileSync(pagesDbPath, 'utf8'));
   const page = pages.find(p => {
@@ -103,11 +104,12 @@ app.get('/page/:slug', (req, res) => {
     return res.redirect('/'); // Redirect to homepage if page not found
   }
   
-  // Create absolute URL for image
+  // Create absolute URLs for image and page
   const imageUrl = page.cardImage ? 
     `${req.protocol}://${req.get('host')}${page.cardImage}` : '';
+  const pageUrl = `${req.protocol}://${req.get('host')}${page.url}`;
   
-  // Render HTML with meta tags
+  // Render HTML with improved meta tags
   res.send(`
 <!DOCTYPE html>
 <html lang="en">
@@ -116,7 +118,7 @@ app.get('/page/:slug', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${page.title}</title>
   
-  <!-- Twitter Card Meta Tags - Fixed formatting and order -->
+  <!-- Twitter Card Meta Tags -->
   <meta name="twitter:card" content="${page.cardType}" />
   <meta property="og:url" content="${pageUrl}" />
   <meta name="twitter:title" content="${page.cardTitle || page.title}" />

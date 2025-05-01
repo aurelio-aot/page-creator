@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Plus, Eye, Save, X, Copy, Check, Link, Layout, FileText } from 'lucide-react';
+import { Trash2, Plus, Eye, Save, X, Copy, Check, Link, Layout, FileText, AlertTriangle } from 'lucide-react';
 
 // API base URL - change this to your server URL
 const API_BASE_URL = '';  // Empty string means same domain as the app
@@ -20,6 +20,7 @@ export default function PageCreator() {
     cardImage: null,
     cardImagePreview: null
   });
+  const [imageError, setImageError] = useState(null);
 
   // Load pages from the server and check for current page in URL
   useEffect(() => {
@@ -81,14 +82,42 @@ export default function PageCreator() {
   const handleImageUpload = async (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      
+      // Check file size (max 5MB for Twitter)
+      if (file.size > 1 * 1024 * 1024) {
+        setImageError("Image is too large. Maximum size is 5MB for Twitter cards.");
+        return;
+      }
+      
       const reader = new FileReader();
       
       // For preview
       reader.onload = (event) => {
-        setFormData({
-          ...formData,
-          cardImagePreview: event.target.result
-        });
+        // Create an image element to check dimensions
+        const img = new Image();
+        img.onload = () => {
+          // Twitter recommends 2:1 ratio for large card images
+          // Minimum dimensions: 300x157
+          const aspectRatio = img.width / img.height;
+          
+          if (img.width < 300 || img.height < 157) {
+            setImageError("Image is too small. Twitter requires minimum dimensions of 300x157 pixels.");
+            return;
+          }
+          
+          // Warn if aspect ratio is significantly off from 2:1
+          if (aspectRatio < 1.7 || aspectRatio > 2.3) {
+            setImageError("Warning: For best Twitter card display, use an image with 2:1 aspect ratio (e.g., 1200x600 pixels).");
+          } else {
+            setImageError(null);
+          }
+          
+          setFormData({
+            ...formData,
+            cardImagePreview: event.target.result
+          });
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
       
@@ -123,6 +152,7 @@ export default function PageCreator() {
       cardImage: null,
       cardImagePreview: null
     });
+    setImageError(null);
   };
 
   const handleSubmit = async (e) => {
@@ -162,6 +192,7 @@ export default function PageCreator() {
           cardImage: null,
           cardImagePreview: null
         });
+        setImageError(null);
         
         // Update the browser URL to match the new page
         window.history.pushState({}, '', page.url);
@@ -224,74 +255,107 @@ export default function PageCreator() {
     window.history.pushState({}, '', page.url);
   };
   
-  // Replace the copyPageUrl function in PageCreator.js with this improved version
-// that includes a fallback mechanism for environments without Clipboard API
+  // Improved copyPageUrl function with fallback mechanism
+  const copyPageUrl = (url) => {
+    const fullUrl = window.location.origin + url;
+    
+    // Try using the Clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(fullUrl)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(err => {
+          console.warn('Clipboard API failed:', err);
+          fallbackCopyTextToClipboard(fullUrl);
+        });
+    } else {
+      // Fallback for browsers without clipboard API
+      fallbackCopyTextToClipboard(fullUrl);
+    }
+  };
 
-const copyPageUrl = (url) => {
-  const fullUrl = window.location.origin + url;
-  
-  // Try using the Clipboard API first
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(fullUrl)
-      .then(() => {
+  // Fallback copy method using textarea element
+  const fallbackCopyTextToClipboard = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    
+    // Make the textarea out of viewport
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    
+    // Save current selection
+    const selected = document.getSelection().rangeCount > 0 
+      ? document.getSelection().getRangeAt(0) 
+      : false;
+    
+    // Select the text field
+    textArea.select();
+    textArea.setSelectionRange(0, 99999); // For mobile devices
+    
+    let success = false;
+    try {
+      // Execute copy command
+      success = document.execCommand('copy');
+      if (success) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => {
-        console.warn('Clipboard API failed:', err);
-        fallbackCopyTextToClipboard(fullUrl);
-      });
-  } else {
-    // Fallback for browsers without clipboard API
-    fallbackCopyTextToClipboard(fullUrl);
-  }
-};
-
-// Fallback copy method using textarea element
-const fallbackCopyTextToClipboard = (text) => {
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  
-  // Make the textarea out of viewport
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-999999px';
-  textArea.style.top = '-999999px';
-  document.body.appendChild(textArea);
-  
-  // Save current selection
-  const selected = document.getSelection().rangeCount > 0 
-    ? document.getSelection().getRangeAt(0) 
-    : false;
-  
-  // Select the text field
-  textArea.select();
-  textArea.setSelectionRange(0, 99999); // For mobile devices
-  
-  let success = false;
-  try {
-    // Execute copy command
-    success = document.execCommand('copy');
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } else {
-      console.warn('Failed to copy with execCommand');
+      } else {
+        console.warn('Failed to copy with execCommand');
+      }
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      // Show alternative message to user
+      alert('Your browser doesn\'t support automatic copying. The URL is: ' + text);
     }
-  } catch (err) {
-    console.error('Fallback copy failed:', err);
-    // Show alternative message to user
-    alert('Your browser doesn\'t support automatic copying. The URL is: ' + text);
-  }
-  
-  // Remove the textarea
-  document.body.removeChild(textArea);
-  
-  // Restore original selection if any
-  if (selected) {
-    document.getSelection().removeAllRanges();
-    document.getSelection().addRange(selected);
-  }
-};
+    
+    // Remove the textarea
+    document.body.removeChild(textArea);
+    
+    // Restore original selection if any
+    if (selected) {
+      document.getSelection().removeAllRanges();
+      document.getSelection().addRange(selected);
+    }
+  };
+
+  // Twitter card preview component
+  const TwitterCardPreview = ({ type, title, description, image, host }) => {
+    return (
+      <div className="twitter-card">
+        {type === 'summary_large_image' && (
+          <div className="twitter-card-image">
+            {image ? (
+              <img 
+                src={image} 
+                alt="Card preview" 
+                className="twitter-card-img"
+              />
+            ) : (
+              <div className="twitter-card-image-placeholder">
+                No image uploaded
+              </div>
+            )}
+          </div>
+        )}
+        <div className="twitter-card-content">
+          <div className="twitter-card-title">
+            {title || 'Card Title'}
+          </div>
+          <div className="twitter-card-description">
+            {description || 'Card description will appear here'}
+          </div>
+          <div className="twitter-card-url">
+            <Link size={14} className="twitter-card-link-icon" />
+            {host}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="app-container">
@@ -310,6 +374,7 @@ const fallbackCopyTextToClipboard = (text) => {
             onClick={() => {
               setShowForm(true);
               setCurrentPage(null);
+              setImageError(null);
               // Reset URL when creating a new page
               window.history.pushState({}, '', '/');
             }}
@@ -403,7 +468,13 @@ const fallbackCopyTextToClipboard = (text) => {
                   onChange={handleInputChange}
                   required
                   className="form-control"
+                  maxLength={70}
                 />
+                {formData.title.length > 60 && (
+                  <div className="text-sm text-warning mt-1">
+                    Twitter recommends titles under 70 characters.
+                  </div>
+                )}
               </div>
               
               <div className="form-group">
@@ -417,7 +488,13 @@ const fallbackCopyTextToClipboard = (text) => {
                   onChange={handleInputChange}
                   rows="3"
                   className="form-control"
+                  maxLength={200}
                 />
+                {formData.summary.length > 180 && (
+                  <div className="text-sm text-warning mt-1">
+                    Twitter recommends descriptions under 200 characters.
+                  </div>
+                )}
               </div>
               
               <div className="form-divider">
@@ -440,6 +517,11 @@ const fallbackCopyTextToClipboard = (text) => {
                     <option value="summary">Summary</option>
                     <option value="summary_large_image">Summary with Large Image</option>
                   </select>
+                  <div className="text-sm text-gray-500 mt-1">
+                    {formData.cardType === 'summary' ? 
+                      'Summary cards include a small square image, title and description.' :
+                      'Large image cards include a prominent image above the title and description.'}
+                  </div>
                 </div>
                 
                 <div className="form-group">
@@ -454,7 +536,13 @@ const fallbackCopyTextToClipboard = (text) => {
                     onChange={handleInputChange}
                     className="form-control"
                     placeholder={formData.title || "Leave blank to use page title"}
+                    maxLength={70}
                   />
+                  {formData.cardTitle && formData.cardTitle.length > 60 && (
+                    <div className="text-sm text-warning mt-1">
+                      Twitter recommends titles under 70 characters.
+                    </div>
+                  )}
                 </div>
                 
                 <div className="form-group">
@@ -469,7 +557,13 @@ const fallbackCopyTextToClipboard = (text) => {
                     rows="2"
                     className="form-control"
                     placeholder={formData.summary || "Leave blank to use page summary"}
+                    maxLength={200}
                   />
+                  {formData.cardDescription && formData.cardDescription.length > 180 && (
+                    <div className="text-sm text-warning mt-1">
+                      Twitter recommends descriptions under 200 characters.
+                    </div>
+                  )}
                 </div>
                 
                 {formData.cardType === 'summary_large_image' && (
@@ -485,6 +579,7 @@ const fallbackCopyTextToClipboard = (text) => {
                             src={formData.cardImagePreview} 
                             alt="Preview" 
                             className="image-preview"
+                            style={{ objectFit: 'cover', aspectRatio: '2/1' }}
                           />
                           <button
                             type="button"
@@ -494,6 +589,12 @@ const fallbackCopyTextToClipboard = (text) => {
                             <Trash2 size={16} />
                           </button>
                         </div>
+                        {imageError && (
+                          <div className="image-error-message">
+                            <AlertTriangle size={14} />
+                            <span>{imageError}</span>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div>
@@ -511,6 +612,9 @@ const fallbackCopyTextToClipboard = (text) => {
                           <div className="flex flex-col items-center">
                             <Plus size={24} className="image-upload-icon" />
                             <span className="image-upload-text">Upload image</span>
+                            <span className="text-sm text-gray-500 mt-2">
+                              Recommended: 1200×600 pixels (2:1 ratio)
+                            </span>
                           </div>
                         </label>
                       </div>
@@ -525,45 +629,23 @@ const fallbackCopyTextToClipboard = (text) => {
                   </h4>
                   
                   <div className="preview-container">
-                    {formData.cardType === 'summary' ? (
-                      <div className="x-card">
-                        <div className="x-card-content">
-                          <div className="x-card-title">{formData.cardTitle || formData.title || 'Card Title'}</div>
-                          <div className="x-card-description">
-                            {formData.cardDescription || formData.summary || 'Card description will appear here'}
-                          </div>
-                          <div className="x-card-url">
-                            <Link size={14} />
-                            {window.location.host}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="x-card">
-                        <div className="x-card-image">
-                          {formData.cardImagePreview ? (
-                            <img 
-                              src={formData.cardImagePreview} 
-                              alt="Card preview" 
-                            />
-                          ) : (
-                            <div className="x-card-image-placeholder">
-                              No image uploaded
-                            </div>
-                          )}
-                        </div>
-                        <div className="x-card-content">
-                          <div className="x-card-title">{formData.cardTitle || formData.title || 'Card Title'}</div>
-                          <div className="x-card-description">
-                            {formData.cardDescription || formData.summary || 'Card description will appear here'}
-                          </div>
-                          <div className="x-card-url">
-                            <Link size={14} />
-                            {window.location.host}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    <TwitterCardPreview 
+                      type={formData.cardType}
+                      title={formData.cardTitle || formData.title || 'Card Title'}
+                      description={formData.cardDescription || formData.summary || 'Card description will appear here'}
+                      image={formData.cardImagePreview}
+                      host={window.location.host}
+                    />
+                    
+                    <div className="twitter-card-tips">
+                      <h5 className="twitter-card-tips-title">Twitter Card Tips:</h5>
+                      <ul className="twitter-card-tips-list">
+                        <li>Images for large cards should have a 2:1 aspect ratio (e.g., 1200×600px)</li>
+                        <li>Keep titles under 70 characters</li>
+                        <li>Keep descriptions under 200 characters</li>
+                        <li>Image must be under 5MB</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -581,6 +663,7 @@ const fallbackCopyTextToClipboard = (text) => {
                 type="button"
                 onClick={handleSubmit}
                 className="btn btn-primary"
+                disabled={!formData.title}
               >
                 <Save size={16} />
                 Save Page
@@ -616,6 +699,7 @@ const fallbackCopyTextToClipboard = (text) => {
 <pre>
 {`<!-- X Card Metadata (automatically included in the page head) -->
 <meta name="twitter:card" content="${currentPage.cardType}" />
+<meta property="og:url" content="${window.location.origin}${currentPage.url}" />
 <meta name="twitter:title" content="${currentPage.cardTitle || currentPage.title}" />
 <meta name="twitter:description" content="${currentPage.cardDescription || currentPage.summary}" />${currentPage.cardImage ? `
 <meta name="twitter:image" content="${window.location.origin}${currentPage.cardImage}" />` : ''}`}
@@ -629,45 +713,13 @@ const fallbackCopyTextToClipboard = (text) => {
                   </h3>
                   
                   <div className="preview-container">
-                    {currentPage.cardType === 'summary' ? (
-                      <div className="x-card">
-                        <div className="x-card-content">
-                          <div className="x-card-title">{currentPage.cardTitle || currentPage.title}</div>
-                          <div className="x-card-description">
-                            {currentPage.cardDescription || currentPage.summary}
-                          </div>
-                          <div className="x-card-url">
-                            <Link size={14} />
-                            {window.location.host}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="x-card">
-                        <div className="x-card-image">
-                          {currentPage.cardImage ? (
-                            <img 
-                              src={currentPage.cardImage} 
-                              alt="Card preview" 
-                            />
-                          ) : (
-                            <div className="x-card-image-placeholder">
-                              No image available
-                            </div>
-                          )}
-                        </div>
-                        <div className="x-card-content">
-                          <div className="x-card-title">{currentPage.cardTitle || currentPage.title}</div>
-                          <div className="x-card-description">
-                            {currentPage.cardDescription || currentPage.summary}
-                          </div>
-                          <div className="x-card-url">
-                            <Link size={14} />
-                            {window.location.host}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    <TwitterCardPreview 
+                      type={currentPage.cardType}
+                      title={currentPage.cardTitle || currentPage.title}
+                      description={currentPage.cardDescription || currentPage.summary}
+                      image={currentPage.cardImage}
+                      host={window.location.host}
+                    />
                   </div>
                 </div>
                 
