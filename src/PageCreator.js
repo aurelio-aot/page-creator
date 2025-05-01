@@ -224,12 +224,74 @@ export default function PageCreator() {
     window.history.pushState({}, '', page.url);
   };
   
-  const copyPageUrl = (url) => {
-    const fullUrl = window.location.origin + url;
-    navigator.clipboard.writeText(fullUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  // Replace the copyPageUrl function in PageCreator.js with this improved version
+// that includes a fallback mechanism for environments without Clipboard API
+
+const copyPageUrl = (url) => {
+  const fullUrl = window.location.origin + url;
+  
+  // Try using the Clipboard API first
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(fullUrl)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => {
+        console.warn('Clipboard API failed:', err);
+        fallbackCopyTextToClipboard(fullUrl);
+      });
+  } else {
+    // Fallback for browsers without clipboard API
+    fallbackCopyTextToClipboard(fullUrl);
+  }
+};
+
+// Fallback copy method using textarea element
+const fallbackCopyTextToClipboard = (text) => {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  
+  // Make the textarea out of viewport
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-999999px';
+  textArea.style.top = '-999999px';
+  document.body.appendChild(textArea);
+  
+  // Save current selection
+  const selected = document.getSelection().rangeCount > 0 
+    ? document.getSelection().getRangeAt(0) 
+    : false;
+  
+  // Select the text field
+  textArea.select();
+  textArea.setSelectionRange(0, 99999); // For mobile devices
+  
+  let success = false;
+  try {
+    // Execute copy command
+    success = document.execCommand('copy');
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      console.warn('Failed to copy with execCommand');
+    }
+  } catch (err) {
+    console.error('Fallback copy failed:', err);
+    // Show alternative message to user
+    alert('Your browser doesn\'t support automatic copying. The URL is: ' + text);
+  }
+  
+  // Remove the textarea
+  document.body.removeChild(textArea);
+  
+  // Restore original selection if any
+  if (selected) {
+    document.getSelection().removeAllRanges();
+    document.getSelection().addRange(selected);
+  }
+};
 
   return (
     <div className="app-container">

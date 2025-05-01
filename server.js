@@ -116,8 +116,9 @@ app.get('/page/:slug', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${page.title}</title>
   
-  <!-- X/Twitter Card Meta Tags -->
+  <!-- Twitter Card Meta Tags - Fixed formatting and order -->
   <meta name="twitter:card" content="${page.cardType}" />
+  <meta property="og:url" content="${pageUrl}" />
   <meta name="twitter:title" content="${page.cardTitle || page.title}" />
   <meta name="twitter:description" content="${page.cardDescription || page.summary}" />
   ${imageUrl ? `<meta name="twitter:image" content="${imageUrl}" />` : ''}
@@ -127,7 +128,6 @@ app.get('/page/:slug', (req, res) => {
   <meta property="og:description" content="${page.cardDescription || page.summary}" />
   <meta property="og:type" content="website" />
   ${imageUrl ? `<meta property="og:image" content="${imageUrl}" />` : ''}
-  <meta property="og:url" content="${req.protocol}://${req.get('host')}${page.url}" />
   
   <link rel="stylesheet" href="/styles.css">
 </head>
