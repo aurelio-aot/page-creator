@@ -86,6 +86,7 @@ export default function PageCreator() {
       // Check file size (max 5MB for Twitter)
       if (file.size > 1 * 1024 * 1024) {
         setImageError("Image is too large. Maximum size is 5MB for Twitter cards.");
+        alert("File too big.  Kindly upload less than 1 MB file.");
         return;
       }
       
