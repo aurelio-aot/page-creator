@@ -5,6 +5,8 @@ const multer = require('multer');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const sharp = require('sharp'); // Add sharp for image resizing
+const { TwitterApi } = require('twitter-api-v2');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -21,6 +23,14 @@ app.use(session({
   saveUninitialized: false,
   cookie: { maxAge: 3600000 } // 1 hour
 }));
+
+// Add Twitter API configuration
+const twitterClient = new TwitterApi({
+  appKey: '8jZxaKvfd2TGszp8BoXWlmtWg',
+  appSecret: 'YiwsjiA1kx5wrIDCvUImuNvIBfVCwBs8LgspoYafSTqSAauEnY',
+  accessToken: '1917355129352904704-hmKac4Hl3xMfsYEcBgUr0e9unJ6cMa',
+  accessSecret: 'vcij54cyrPV2yW5OMOw6izIn5ISi6VYy7LPS2rB2qyUwb',
+});
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
@@ -39,7 +49,26 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+// Add file filter to only allow specific image types
+const fileFilter = (req, file, cb) => {
+  // Check file types
+  if (file.mimetype === 'image/png' || 
+      file.mimetype === 'image/jpg' || 
+      file.mimetype === 'image/jpeg' || 
+      file.mimetype === 'image/gif') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PNG, JPG and GIF file formats are allowed!'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB file size limit
+  }
+});
 
 // Initialize pages DB (using a JSON file for simplicity)
 const pagesDbPath = path.join(__dirname, 'pages.json');
@@ -84,7 +113,6 @@ app.post('/api/logout', (req, res) => {
 
 // Authentication middleware for protected routes
 const requireAuth = (req, res, next) => {
-
   const publicToken = req.query.public;
   if (publicToken === 'true') {
     return next(); // Allow access with the token
@@ -96,9 +124,35 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
-// Update the meta tags section in server.js
-// Find the route handler for '/page/:slug' and update the HTML template
+// Add a new route for Twitter API sharing
+app.post('/api/share-twitter', requireAuth, async (req, res) => {
+  try {
+    const { text, url } = req.body;
+    
+    if (!text || !url) {
+      return res.status(400).json({ error: 'Text and URL are required' });
+    }
+    
+    // Create a tweet with the provided text and URL
+    const { data } = await twitterClient.v2.tweet(`${text}\n\n${url}`);
+    
+    return res.json({
+      success: true,
+      tweetId: data.id,
+      message: 'Tweet posted successfully!'
+    });
+  } catch (error) {
+    console.error('Twitter API error:', error);
+    
+    // Return appropriate error message
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Error posting to Twitter'
+    });
+  }
+});
 
+// Update the meta tags section in server.js
 app.get('/page/:slug', (req, res) => {
   const pages = JSON.parse(fs.readFileSync(pagesDbPath, 'utf8'));
   const page = pages.find(p => {
@@ -151,7 +205,7 @@ app.get('/page/:slug', (req, res) => {
       <script src="/bundle.js"></script>
     </body>
     </html>
-      `);
+  `);
 });
 
 // Add a public route to get a specific page by slug - no auth required
@@ -169,21 +223,84 @@ app.get('/api/public/pages/:slug', (req, res) => {
   res.json(page);
 });
 
-// Routes that require authentication
-// 1. Upload image
-app.post('/api/upload-image', requireAuth, upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image uploaded' });
+// Updated image upload route with resizing
+app.post('/api/upload-image', requireAuth, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image uploaded or invalid file type. Only PNG, JPG and GIF formats are allowed.' });
+    }
+    
+    // Get file info
+    const imagePath = req.file.path;
+    const filenameParts = req.file.filename.split('.');
+    const fileExtension = filenameParts.pop().toLowerCase();
+    const filenameWithoutExt = filenameParts.join('.');
+    
+    // Output path for resized image
+    const outputPath = path.join(req.file.destination, `${filenameWithoutExt}-resized.${fileExtension}`);
+    
+    // Get image metadata to check dimensions
+    const metadata = await sharp(imagePath).metadata();
+    
+    // Target dimensions for Twitter cards (2:1 ratio)
+    const targetWidth = 1200;
+    const targetHeight = 600;
+    let needsResize = false;
+    
+    // Check if image needs resizing
+    if (metadata.width > targetWidth || metadata.height > targetHeight) {
+      needsResize = true;
+      
+      // Resize image while keeping aspect ratio
+      await sharp(imagePath)
+        .resize({
+          width: targetWidth,
+          height: targetHeight,
+          fit: 'inside'
+        })
+        .toFile(outputPath);
+      
+      // If original is not needed, remove it
+      fs.unlinkSync(imagePath);
+      
+      // Use resized image path
+      var imageUrl = `/uploads/${filenameWithoutExt}-resized.${fileExtension}`;
+    } else {
+      // Use original image path
+      var imageUrl = `/uploads/${req.file.filename}`;
+    }
+    
+    res.json({ 
+      success: true, 
+      imageUrl: imageUrl,
+      fullUrl: `${req.protocol}://${req.get('host')}${imageUrl}`,
+      resized: needsResize
+    });
+  } catch (error) {
+    console.error('Error processing image:', error);
+    return res.status(500).json({ error: 'Error processing image' });
   }
-  
-  // Return the URL to access the image
-  const imageUrl = `/uploads/${req.file.filename}`;
-  
-  res.json({ 
-    success: true, 
-    imageUrl: imageUrl,
-    fullUrl: `${req.protocol}://${req.get('host')}${imageUrl}` 
-  });
+});
+
+// Error handler for multer errors
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    // A Multer error occurred when uploading
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ 
+        error: 'File too large. Maximum size is 5MB.' 
+      });
+    }
+    return res.status(400).json({ 
+      error: `Upload error: ${err.message}` 
+    });
+  } else if (err) {
+    // An unknown error occurred
+    return res.status(500).json({ 
+      error: err.message 
+    });
+  }
+  next();
 });
 
 // 2. Save page data
@@ -268,7 +385,6 @@ app.delete('/api/pages/:id', requireAuth, (req, res) => {
   
   res.json({ success: true });
 });
-
 
 // Modify the root handler to check for public access
 app.get('*', (req, res) => {

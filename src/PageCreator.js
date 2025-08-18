@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Plus, Eye, Save, X, Copy, Check, Link, Layout, FileText, AlertTriangle } from 'lucide-react';
+import { Trash2, Plus, Eye, Save, X, Copy, Check, Link, Layout, FileText, AlertTriangle, Twitter, Share2 } from 'lucide-react';
 
 // API base URL - change this to your server URL
 const API_BASE_URL = '';  // Empty string means same domain as the app
@@ -22,6 +22,7 @@ export default function PageCreator({ isPublicMode = false }) {
     cardImagePreview: null
   });
   const [imageError, setImageError] = useState(null);
+  const [isApiLoading, setIsApiLoading] = useState(false);
 
   // Load pages from the server and check for current page in URL
   useEffect(() => {
@@ -111,10 +112,18 @@ export default function PageCreator({ isPublicMode = false }) {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       
-      // Check file size (max 5MB for Twitter)
+      // Check file type
+      const fileType = file.type;
+      if (!['image/jpeg', 'image/jpg', 'image/png', 'image/gif'].includes(fileType)) {
+        setImageError("Only PNG, JPG and GIF formats are allowed.");
+        alert("Invalid file type. Only PNG, JPG and GIF formats are allowed.");
+        return;
+      }
+      
+      // Check file size
       if (file.size > 1 * 1024 * 1024) {
-        setImageError("Image is too large. Maximum size is 5MB for Twitter cards.");
-        alert("File too big.  Kindly upload less than 1 MB file.");
+        setImageError("Image is too large. Maximum size is 1MB.");
+        alert("File too big. Please upload a file smaller than 1MB.");
         return;
       }
       
@@ -136,7 +145,7 @@ export default function PageCreator({ isPublicMode = false }) {
           
           // Warn if aspect ratio is significantly off from 2:1
           if (aspectRatio < 1.7 || aspectRatio > 2.3) {
-            setImageError("Warning: For best Twitter card display, use an image with 2:1 aspect ratio (e.g., 1200x600 pixels).");
+            setImageError("Warning: For best Twitter card display, use an image with 2:1 aspect ratio (e.g., 1200x600 pixels). The image may be resized automatically.");
           } else {
             setImageError(null);
           }
@@ -166,11 +175,19 @@ export default function PageCreator({ isPublicMode = false }) {
             ...prev,
             cardImage: data.imageUrl  // Store the relative URL returned by the server
           }));
+          
+          // If image was resized, inform the user
+          if (data.resized) {
+            setImageError("Your image has been automatically resized to fit Twitter card requirements (1200x600 pixels max).");
+          }
         } else {
-          console.error("Error uploading image:", await response.text());
+          const errorData = await response.json();
+          console.error("Error uploading image:", errorData.error);
+          setImageError(errorData.error || "Error uploading image. Please try again.");
         }
       } catch (error) {
         console.error("Error uploading image:", error);
+        setImageError("Error uploading image. Please try again.");
       }
     }
   };
@@ -284,6 +301,20 @@ export default function PageCreator({ isPublicMode = false }) {
     window.history.pushState({}, '', page.url);
   };
   
+  // Twitter sharing functionality
+  const shareOnTwitter = (page) => {
+    if (!page) return;
+    
+    // Create the full URL to share
+    const pageUrl = `${window.location.origin}${page.url}?public=true`;
+    
+    // Create share text
+    const shareText = encodeURIComponent(`${page.title}\n\n${pageUrl}`);
+    
+    // Open Twitter intent URL
+    window.open(`https://twitter.com/intent/tweet?text=${shareText}`, '_blank');
+  };
+  
   // Improved copyPageUrl function with fallback mechanism
   const copyPageUrl = (url) => {
     // Add the public parameter to the URL
@@ -305,6 +336,47 @@ export default function PageCreator({ isPublicMode = false }) {
       fallbackCopyTextToClipboard(fullUrl);
     }
   };
+
+  // Add this function to your PageCreator component
+const shareViaTwitterApi = async (page) => {
+  if (!page) return;
+  
+  try {
+    // Create the full URL to share
+    const pageUrl = `${window.location.origin}${page.url}?public=true`;
+    
+    // Create share text
+    const shareText = page.title;
+    
+    // Show loading state
+    setIsLoading(true);
+    
+    // Call your API endpoint
+    const response = await fetch(`${API_BASE_URL}/api/share-twitter`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: shareText,
+        url: pageUrl
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      alert('Successfully shared to Twitter!');
+    } else {
+      alert(`Error: ${data.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Error sharing via Twitter API:', error);
+    alert('Failed to share to Twitter. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Fallback copy method using textarea element
   const fallbackCopyTextToClipboard = (text) => {
@@ -373,10 +445,11 @@ export default function PageCreator({ isPublicMode = false }) {
               </div>
             )}
             
-            <div className="public-page-footer mt-6 p-4">
-              <div className="text-sm">
-                <p>Shared via X/Twitter Card</p>
-              </div>
+            <div className="public-page-footer mt-6">
+              <Twitter size={20} className="twitter-icon" />
+              <p className="text-sm">
+                Shared via Twitter
+              </p>
             </div>
           </div>
         </div>
@@ -672,7 +745,7 @@ export default function PageCreator({ isPublicMode = false }) {
                         <input
                           type="file"
                           id="cardImage"
-                          accept="image/*"
+                          accept="image/png, image/jpeg, image/jpg, image/gif"
                           onChange={handleImageUpload}
                           style={{ display: 'none' }}
                         />
@@ -685,6 +758,9 @@ export default function PageCreator({ isPublicMode = false }) {
                             <span className="image-upload-text">Upload image</span>
                             <span className="text-sm text-gray-500 mt-2">
                               Recommended: 1200×600 pixels (2:1 ratio)
+                            </span>
+                            <span className="text-xs text-gray-500 mt-1">
+                              Allowed formats: PNG, JPG, GIF
                             </span>
                           </div>
                         </label>
@@ -748,6 +824,23 @@ export default function PageCreator({ isPublicMode = false }) {
                 <div className="flex justify-between items-center mb-4">
                   <h1 className="text-2xl font-semibold">{currentPage.title}</h1>
                   <div className="flex gap-2">
+                    
+                    <button
+                      onClick={() => shareOnTwitter(currentPage)}
+                      className="btn btn-primary btn-sm"
+                    >
+                      <Twitter size={16} />
+                      Share on Twitter
+                    </button>
+                    
+                    <button
+                        onClick={() => shareViaTwitterApi(currentPage)}
+                        className="btn btn-twitter btn-sm"
+                        disabled={isLoading}
+                      >
+                        <Twitter size={16} />
+                        Share thru Twitter API
+                      </button>
                     <button
                       onClick={() => copyPageUrl(currentPage.url)}
                       className="btn btn-outline btn-sm"
